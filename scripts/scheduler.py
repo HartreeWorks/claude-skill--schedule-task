@@ -517,7 +517,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command is None:
+    if not hasattr(args, 'func'):
         parser.print_help()
         sys.exit(1)
 
