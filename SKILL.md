@@ -1,6 +1,6 @@
 ---
 name: schedule-task
-description: This skill should be used when the user asks to "schedule a task", "run something daily", "set up a cron job", "schedule a command", "list scheduled tasks", "manage scheduled tasks", "remove a scheduled task", "edit a scheduled task", "use launchd", "create a launchd job", "launchd agent", or mentions running Claude commands on a schedule. Manages macOS launchd LaunchAgents for scheduled command execution.
+description: This skill should be used when the user asks to schedule tasks, set up cron jobs, or manage launchd agents. For running Claude commands on a schedule.
 ---
 
 # Scheduled Task Manager
