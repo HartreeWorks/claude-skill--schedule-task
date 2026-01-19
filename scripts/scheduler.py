@@ -97,10 +97,27 @@ def build_plist(name: str, command: str, schedule: dict) -> dict:
     return plist
 
 
+def resolve_claude_in_command(command: str) -> str:
+    """Replace 'claude' with its full path in a command string."""
+    # Only replace if the command starts with 'claude ' or contains ' claude '
+    # to avoid replacing 'claude' in other contexts (e.g., paths, strings)
+    claude_path = get_claude_path()
+
+    if command.startswith("claude "):
+        command = claude_path + command[6:]
+    elif command == "claude":
+        command = claude_path
+
+    return command
+
+
 def create_task(args) -> None:
     """Create a new scheduled task."""
     name = args.name
     command = args.command
+
+    # Resolve claude binary path in command
+    command = resolve_claude_in_command(command)
 
     # Validate name
     if not name or "/" in name or " " in name:
@@ -353,7 +370,7 @@ def edit_task(args) -> None:
 
     # Update command if provided
     if args.command:
-        task["command"] = args.command
+        task["command"] = resolve_claude_in_command(args.command)
 
     # Update schedule if any schedule args provided
     schedule = task.get("schedule", {})
