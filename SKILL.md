@@ -1,6 +1,6 @@
 ---
 name: schedule-task
-description: This skill should be used when the user asks to schedule tasks, set up cron jobs, or manage launchd agents. For running Claude commands on a schedule.
+description: This skill should be used when the user asks to schedule tasks, set up cron jobs, manage launchd agents, list scheduled tasks, check what's scheduled, or asks when/what time a task is scheduled to run. For running Claude commands on a schedule.
 ---
 
 # Scheduled Task Manager
