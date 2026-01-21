@@ -138,13 +138,19 @@ The registry at `~/.claude/skills/schedule-task/registry.json` tracks all manage
 
 1. **Use `-p` flag**: For scheduled Claude commands, always use `claude -p "prompt"` (print mode) for non-interactive execution
 
-2. **Full paths**: The script automatically resolves the full path to `claude` binary
+2. **Use exact skill names, not aliases**: When scheduling a skill with `-p '/skill-name'`, you must use the exact skill name from the skill's `name:` field, not aliases. Aliases like `/cos` for `/chief-of-staff` only work in interactive mode.
+   - ✅ `claude -p '/chief-of-staff'`
+   - ❌ `claude -p '/cos'` (alias won't work)
 
-3. **Logs**: Check `/tmp/claude-scheduled-<name>.log` and `.err` for output and errors
+   The scheduler validates this and will suggest the correct name if you use an alias.
 
-4. **Missed runs**: launchd will run missed jobs when the Mac wakes from sleep (if the job was due during sleep)
+3. **Full paths**: The script automatically resolves the full path to `claude` binary
 
-5. **Persistence**: Tasks survive reboots. They're loaded automatically from `~/Library/LaunchAgents/`
+4. **Logs**: Check `/tmp/claude-scheduled-<name>.log` and `.err` for output and errors
+
+5. **Missed runs**: launchd will run missed jobs when the Mac wakes from sleep (if the job was due during sleep)
+
+6. **Persistence**: Tasks survive reboots. They're loaded automatically from `~/Library/LaunchAgents/`
 
 ## Workflow
 

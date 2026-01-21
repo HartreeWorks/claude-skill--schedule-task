@@ -8,6 +8,7 @@ import argparse
 import json
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -20,6 +21,8 @@ REGISTRY_PATH = SKILL_DIR / "registry.json"
 LAUNCH_AGENTS_DIR = Path.home() / "Library" / "LaunchAgents"
 LABEL_PREFIX = "com.claude.scheduled."
 LOG_DIR = Path("/tmp")
+CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
+CLAUDE_COMMANDS_DIR = Path.home() / ".claude" / "commands"
 
 
 def load_registry() -> dict:
@@ -28,6 +31,121 @@ def load_registry() -> dict:
         with open(REGISTRY_PATH, "r") as f:
             return json.load(f)
     return {"tasks": {}}
+
+
+def get_valid_skill_names() -> set:
+    """Get all valid skill names from ~/.claude/skills/ and ~/.claude/commands/."""
+    skill_names = set()
+
+    # Check skills directory
+    if CLAUDE_SKILLS_DIR.exists():
+        for item in CLAUDE_SKILLS_DIR.iterdir():
+            if item.is_dir():
+                # Look for SKILL.md or a markdown file with name in frontmatter
+                skill_md = item / "SKILL.md"
+                if skill_md.exists():
+                    name = extract_skill_name_from_file(skill_md)
+                    if name:
+                        skill_names.add(name)
+                else:
+                    # Try any .md file in the directory
+                    for md_file in item.glob("*.md"):
+                        name = extract_skill_name_from_file(md_file)
+                        if name:
+                            skill_names.add(name)
+                            break
+            elif item.is_file() and item.suffix == ".md":
+                # Single-file skill
+                name = extract_skill_name_from_file(item)
+                if name:
+                    skill_names.add(name)
+
+    # Check commands directory
+    if CLAUDE_COMMANDS_DIR.exists():
+        for item in CLAUDE_COMMANDS_DIR.iterdir():
+            if item.is_file() and item.suffix == ".md":
+                name = extract_skill_name_from_file(item)
+                if name:
+                    skill_names.add(name)
+
+    return skill_names
+
+
+def extract_skill_name_from_file(filepath: Path) -> str | None:
+    """Extract the skill name from frontmatter of a markdown file."""
+    try:
+        with open(filepath, "r") as f:
+            content = f.read(2000)  # Read just the beginning for frontmatter
+
+        # Check for YAML frontmatter
+        if content.startswith("---"):
+            end_idx = content.find("---", 3)
+            if end_idx != -1:
+                frontmatter = content[3:end_idx]
+                # Look for name: field
+                match = re.search(r'^name:\s*(.+)$', frontmatter, re.MULTILINE)
+                if match:
+                    return match.group(1).strip().strip('"\'')
+    except Exception:
+        pass
+    return None
+
+
+def validate_claude_skill_command(command: str) -> tuple[bool, str | None, str | None]:
+    """
+    Validate a claude command that invokes a skill.
+
+    Returns: (is_valid, skill_name_used, suggestion)
+    - is_valid: True if no issues found
+    - skill_name_used: The skill name extracted from the command (if any)
+    - suggestion: A helpful message if there's an issue
+    """
+    # Pattern to match: claude -p '/skill-name' or claude -p "/skill-name"
+    # Also handles: /path/to/claude -p '/skill-name'
+    pattern = r'claude\s+-p\s+[\'"]?/([a-zA-Z0-9_-]+)[\'"]?'
+    match = re.search(pattern, command)
+
+    if not match:
+        # Not a skill invocation command, no validation needed
+        return (True, None, None)
+
+    skill_name = match.group(1)
+    valid_skills = get_valid_skill_names()
+
+    if skill_name in valid_skills:
+        return (True, skill_name, None)
+
+    # Skill name not found - might be an alias
+    # Try to find a matching skill by checking if any skill name contains this as a substring
+    # or if this is a common abbreviation
+    suggestions = []
+    for valid_name in valid_skills:
+        # Check if the invalid name is a substring of a valid name
+        if skill_name in valid_name:
+            suggestions.append(valid_name)
+        # Check if valid name starts with the same letters
+        elif valid_name.startswith(skill_name):
+            suggestions.append(valid_name)
+        # Check for abbreviation match (e.g., "cos" matches "chief-of-staff")
+        # by comparing first letters of hyphenated parts
+        elif "-" in valid_name:
+            parts = valid_name.split("-")
+            abbreviation = "".join(part[0] for part in parts if part)
+            if abbreviation == skill_name:
+                suggestions.append(valid_name)
+
+    if suggestions:
+        suggestion_text = f"Skill '/{skill_name}' not found. The -p flag requires the exact skill name.\n"
+        suggestion_text += f"  Did you mean: /{suggestions[0]}?\n"
+        suggestion_text += f"  Note: Skill aliases (like /cos for /chief-of-staff) only work in interactive mode."
+    else:
+        suggestion_text = f"Skill '/{skill_name}' not found. The -p flag requires the exact skill name.\n"
+        suggestion_text += f"  Available skills: {', '.join(sorted(list(valid_skills)[:10]))}"
+        if len(valid_skills) > 10:
+            suggestion_text += f" (and {len(valid_skills) - 10} more)"
+        suggestion_text += "\n  Note: Skill aliases only work in interactive mode, not with -p flag."
+
+    return (False, skill_name, suggestion_text)
 
 
 def save_registry(registry: dict) -> None:
@@ -118,6 +236,12 @@ def create_task(args) -> None:
 
     # Resolve claude binary path in command
     command = resolve_claude_in_command(command)
+
+    # Validate skill name if this is a claude skill command
+    is_valid, skill_used, suggestion = validate_claude_skill_command(command)
+    if not is_valid:
+        print(f"Error: {suggestion}")
+        sys.exit(1)
 
     # Validate name
     if not name or "/" in name or " " in name:
@@ -370,7 +494,13 @@ def edit_task(args) -> None:
 
     # Update command if provided
     if args.command:
-        task["command"] = resolve_claude_in_command(args.command)
+        resolved_command = resolve_claude_in_command(args.command)
+        # Validate skill name if this is a claude skill command
+        is_valid, skill_used, suggestion = validate_claude_skill_command(resolved_command)
+        if not is_valid:
+            print(f"Error: {suggestion}")
+            sys.exit(1)
+        task["command"] = resolved_command
 
     # Update schedule if any schedule args provided
     schedule = task.get("schedule", {})
