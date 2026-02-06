@@ -13,6 +13,45 @@ Manage scheduled tasks on macOS using launchd LaunchAgents. This skill creates, 
 - Stores plist files in `~/Library/LaunchAgents/`
 - Maintains a registry at `~/.claude/skills/schedule-task/registry.json` to track only tasks created by this skill
 - All task labels are prefixed with `com.claude.scheduled.` for easy identification
+- **Dual-machine support**: Tasks can run on either MacBook (`mbp`) or Mac Mini (`mini`), with a shared registry synced via Syncthing
+
+## Dual-Machine Setup
+
+Tasks can be scheduled to run on either machine:
+
+| Machine | Use for | Examples |
+|---------|---------|----------|
+| `mini` | Long-running tasks, always-on reliability | Claude skills, transcription, AI agents |
+| `mbp` | MacBook-specific tasks | Firewall checks, activity tracking, display-dependent tasks |
+
+**Default behaviour:**
+- Tasks are created on the **current machine** by default
+- Use `--machine mini` or `--machine mbp` to specify a different machine
+- The `list` command shows all tasks across both machines with their status
+
+**Creating tasks on a specific machine:**
+
+```bash
+# Create on Mac Mini (from either machine)
+python ~/.claude/skills/schedule-task/scripts/scheduler.py create \
+  --name "overnight-task" \
+  --command "claude --dangerously-skip-permissions -p '/some-skill'" \
+  --machine mini \
+  --hour 3 --minute 0
+
+# Create on MacBook
+python ~/.claude/skills/schedule-task/scripts/scheduler.py create \
+  --name "macbook-check" \
+  --command "/path/to/script.sh" \
+  --machine mbp \
+  --interval 3600
+```
+
+**Status meanings in `list` output:**
+- `active` — Task is loaded and running on this machine
+- `remote` — Task runs on the other machine (enabled in registry)
+- `disabled` — Task is disabled
+- `unloaded` — Task should be running locally but plist isn't loaded
 
 ## Usage
 
@@ -23,7 +62,7 @@ Use the Python script to create a scheduled task:
 ```bash
 python ~/.claude/skills/schedule-task/scripts/scheduler.py create \
   --name "daily-hello" \
-  --command "claude -p 'Hello'" \
+  --command "claude --dangerously-skip-permissions -p 'Hello'" \
   --hour 9 \
   --minute 0
 ```
@@ -32,6 +71,7 @@ python ~/.claude/skills/schedule-task/scripts/scheduler.py create \
 
 | Option | Description | Example |
 |--------|-------------|---------|
+| `--machine` | Machine to run on (`mbp` or `mini`) | `--machine mini` |
 | `--hour` | Hour (0-23) | `--hour 9` |
 | `--minute` | Minute (0-59) | `--minute 30` |
 | `--weekday` | Day of week (0=Sun, 1=Mon, ..., 6=Sat) | `--weekday 1` |
@@ -41,22 +81,22 @@ python ~/.claude/skills/schedule-task/scripts/scheduler.py create \
 **Examples:**
 
 ```bash
-# Every day at 9:00 AM
+# Every day at 9:00 AM - run a Claude skill
 python ~/.claude/skills/schedule-task/scripts/scheduler.py create \
-  --name "morning-task" \
-  --command "claude -p 'Good morning'" \
+  --name "morning-briefing" \
+  --command "claude --dangerously-skip-permissions -p '/chief-of-staff'" \
   --hour 9 --minute 0
 
 # Every Monday at 10:00 AM
 python ~/.claude/skills/schedule-task/scripts/scheduler.py create \
   --name "weekly-review" \
-  --command "claude -p 'Time for weekly review'" \
+  --command "claude --dangerously-skip-permissions -p 'Time for weekly review'" \
   --hour 10 --minute 0 --weekday 1
 
-# Every hour
+# Every hour - non-Claude command (no flag needed)
 python ~/.claude/skills/schedule-task/scripts/scheduler.py create \
   --name "hourly-check" \
-  --command "claude -p 'Hourly check'" \
+  --command "/path/to/script.sh" \
   --interval 3600
 ```
 
@@ -101,7 +141,7 @@ python ~/.claude/skills/schedule-task/scripts/scheduler.py edit \
 # Change the command
 python ~/.claude/skills/schedule-task/scripts/scheduler.py edit \
   --name "daily-hello" \
-  --command "claude -p 'New message'"
+  --command "claude --dangerously-skip-permissions -p 'New message'"
 ```
 
 ### View Logs
@@ -114,43 +154,50 @@ python ~/.claude/skills/schedule-task/scripts/scheduler.py logs --name "daily-he
 
 ## Registry Format
 
-The registry at `~/.claude/skills/schedule-task/registry.json` tracks all managed tasks:
+The registry at `~/.claude/skills/schedule-task/registry.json` tracks all managed tasks across both machines (synced via Syncthing):
 
 ```json
 {
   "tasks": {
     "daily-hello": {
       "name": "daily-hello",
-      "command": "claude -p 'Hello'",
+      "command": "claude --dangerously-skip-permissions -p 'Hello'",
       "schedule": {
         "hour": 9,
         "minute": 0
       },
       "created": "2024-12-23T09:00:00",
       "enabled": true,
-      "plist_path": "~/Library/LaunchAgents/com.claude.scheduled.daily-hello.plist"
+      "plist_path": "~/Library/LaunchAgents/com.claude.scheduled.daily-hello.plist",
+      "machine": "mini"
     }
   }
 }
 ```
 
+The `machine` field indicates where the task runs (`mbp` or `mini`). The plist file only exists on the target machine.
+
 ## Important Notes
 
-1. **Use `-p` flag**: For scheduled Claude commands, always use `claude -p "prompt"` (print mode) for non-interactive execution
+1. **Use `--dangerously-skip-permissions` for autonomous execution**: Scheduled Claude tasks must include this flag to run without permission prompts. Without it, macOS will show permission dialogs that block execution.
+   - ✅ `claude --dangerously-skip-permissions -p '/chief-of-staff'`
+   - ❌ `claude -p '/chief-of-staff'` (will prompt for permissions and fail)
 
-2. **Use exact skill names, not aliases**: When scheduling a skill with `-p '/skill-name'`, you must use the exact skill name from the skill's `name:` field, not aliases. Aliases like `/cos` for `/chief-of-staff` only work in interactive mode.
-   - ✅ `claude -p '/chief-of-staff'`
-   - ❌ `claude -p '/cos'` (alias won't work)
+2. **Use `-p` flag**: For scheduled Claude commands, always use `claude -p "prompt"` (print mode) for non-interactive execution
+
+3. **Use exact skill names, not aliases**: When scheduling a skill with `-p '/skill-name'`, you must use the exact skill name from the skill's `name:` field, not aliases. Aliases like `/cos` for `/chief-of-staff` only work in interactive mode.
+   - ✅ `claude --dangerously-skip-permissions -p '/chief-of-staff'`
+   - ❌ `claude --dangerously-skip-permissions -p '/cos'` (alias won't work)
 
    The scheduler validates this and will suggest the correct name if you use an alias.
 
-3. **Full paths**: The script automatically resolves the full path to `claude` binary
+4. **Full paths**: The script automatically resolves the full path to `claude` binary
 
-4. **Logs**: Check `/tmp/claude-scheduled-<name>.log` and `.err` for output and errors
+5. **Logs**: Check `/tmp/claude-scheduled-<name>.log` and `.err` for output and errors
 
-5. **Missed runs**: launchd will run missed jobs when the Mac wakes from sleep (if the job was due during sleep)
+6. **Missed runs**: launchd will run missed jobs when the Mac wakes from sleep (if the job was due during sleep)
 
-6. **Persistence**: Tasks survive reboots. They're loaded automatically from `~/Library/LaunchAgents/`
+7. **Persistence**: Tasks survive reboots. They're loaded automatically from `~/Library/LaunchAgents/`
 
 ## Workflow
 
@@ -173,9 +220,10 @@ launchctl list | grep com.claude.scheduled
 log show --predicate 'subsystem == "com.apple.xpc.launchd"' --last 1h | grep claude
 ```
 
-**Permission issues:**
-- Ensure the command has the right permissions
-- Check that the claude binary path is correct
+**Permission dialogs appearing:**
+If you see dialogs like "X.X.X would like to access files in your Documents folder":
+- Ensure the command includes `--dangerously-skip-permissions` flag
+- Edit the task: `python scheduler.py edit --name "task-name" --command "claude --dangerously-skip-permissions -p '...'"`
 
 **Debugging:**
 ```bash
@@ -184,13 +232,13 @@ launchctl load ~/Library/LaunchAgents/com.claude.scheduled.task-name.plist
 
 # Check the error log
 cat /tmp/claude-scheduled-task-name.err
+
+# Test run a task
+python ~/.claude/skills/schedule-task/scripts/scheduler.py run --name "task-name"
 ```
 
 
 ## Update check
 
-This is a shared skill. Before executing, check `~/.claude/skills/.update-config.json`.
-If `auto_check_enabled` is true and `last_checked_timestamp` is older than `check_frequency_days`,
-mention: "It's been a while since skill updates were checked. Run `/update-skills` to see available updates."
-Do NOT perform network operations - just check the local timestamp.
+This skill is managed by [skills.sh](https://skills.sh). To check for updates, run `npx skills update`.
 
