@@ -236,9 +236,3 @@ cat /tmp/claude-scheduled-task-name.err
 # Test run a task
 python ~/.claude/skills/schedule-task/scripts/scheduler.py run --name "task-name"
 ```
-
-
-## Update check
-
-This skill is managed by [skills.sh](https://skills.sh). To check for updates, run `npx skills update`.
-
