@@ -23,6 +23,7 @@ LABEL_PREFIX = "com.claude.scheduled."
 LOG_DIR = Path("/tmp")
 CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
 CLAUDE_COMMANDS_DIR = Path.home() / ".claude" / "commands"
+LAUNCHD_WRAPPER = Path.home() / ".agents" / "scripts" / "launchd-wrapper.sh"
 
 
 def load_registry() -> dict:
@@ -190,7 +191,7 @@ def build_plist(name: str, command: str, schedule: dict) -> dict:
 
     plist = {
         "Label": label,
-        "ProgramArguments": ["/bin/bash", "-c", command],
+        "ProgramArguments": [str(LAUNCHD_WRAPPER), "/bin/bash", "-c", command],
         "StandardOutPath": str(log_path),
         "StandardErrorPath": str(err_path),
         "RunAtLoad": False,

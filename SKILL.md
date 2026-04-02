@@ -7,12 +7,13 @@ description: This skill should be used when the user asks to schedule tasks, set
 
 Manage scheduled tasks on macOS using launchd LaunchAgents. This skill creates, lists, edits, and removes scheduled tasks while maintaining a registry of tasks it manages.
 
-## How It Works
+## How it works
 
-- Uses macOS **launchd** (the native, reliable scheduler)
+- Uses macOS **launchd** (the native, reliable scheduler — catches up on missed jobs after sleep, unlike cron)
 - Stores plist files in `~/Library/LaunchAgents/`
 - Maintains a registry at `~/.claude/skills/schedule-task/registry.json` to track only tasks created by this skill
 - All task labels are prefixed with `com.claude.scheduled.` for easy identification
+- **Environment wrapper**: All tasks run through `~/.agents/scripts/launchd-wrapper.sh`, which sources `~/.zshenv` before executing the command. This means environment variables (API keys, PATH additions) set in `~/.zshenv` are automatically available to all scheduled tasks — no need to duplicate them in individual plists.
 - **Dual-machine support**: Tasks can run on either MacBook (`mbp`) or Mac Mini (`mini`), with a shared registry synced via Syncthing
 
 ## Dual-Machine Setup
